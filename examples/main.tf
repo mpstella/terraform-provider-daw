@@ -19,4 +19,10 @@ output "my_notebooks" {
 
 resource "daw_notebook" "test" {
   display_name = "this was deployed by terraform"
+  machine_spec =  {
+    machine_type =  "e2-standard-2"
+  }
+  network_spec = {
+    enable_internet_access = true
+  }
 }

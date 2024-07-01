@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var (
@@ -22,9 +23,15 @@ type notebookResource struct {
 }
 
 type notebookResourceModel struct {
-	Name        types.String `tfsdk:"name"`
-	DisplayName types.String `tfsdk:"display_name"`
-	Description types.String `tfsdk:"description"`
+	Name                   types.String                         `tfsdk:"name"`
+	DisplayName            types.String                         `tfsdk:"display_name"`
+	Description            types.String                         `tfsdk:"description"`
+	IsDefault              types.Bool                           `tfsdk:"is_default"`
+	EnableSecureBoot       types.Bool                           `tfsdk:"enable_secure_boot"`
+	MachineSpec            notebookMachineSpecModel             `tfsdk:"machine_spec"`
+	DataPersistentDiskSpec *notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
+	NetworkSpec            notebookNetworkSpecModel             `tfsdk:"network_spec"`
+	IdleShutdownConfig     *notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
 }
 
 func NewNotebookResource() resource.Resource {
@@ -44,6 +51,12 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 	notebook := gcp.NotebookRuntimeTemplate{
 		DisplayName: plan.DisplayName.ValueStringPointer(),
 		Description: plan.Description.ValueStringPointer(),
+		MachineSpec: &gcp.MachineSpec{
+			MachineType: plan.MachineSpec.MachineType.ValueStringPointer(),
+		},
+		NetworkSpec: &gcp.NetworkSpec{
+			EnableInternetAccess: plan.NetworkSpec.EnableInternetAccess.ValueBoolPointer(),
+		},
 	}
 
 	new_notebook, err := n.client.CreateNotebook(&notebook)
@@ -111,9 +124,54 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	// Overwrite with refreshed state
-	state.Name = types.StringPointerValue(notebook.Name)
-	state.DisplayName = types.StringPointerValue(notebook.DisplayName)
-	state.Description = types.StringPointerValue(notebook.Description)
+	state = notebookResourceModel{
+		Name:        types.StringPointerValue(notebook.Name),
+		DisplayName: types.StringPointerValue(notebook.DisplayName),
+		Description: types.StringPointerValue(notebook.Description),
+		IsDefault:   types.BoolPointerValue(notebook.IsDefault),
+	}
+
+	if notebook.ShieldedVmConfig != nil {
+		state.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
+	}
+
+	var ac64 int64
+	if notebook.MachineSpec.AcceleratorCount != nil {
+		ac64 = int64(*notebook.MachineSpec.AcceleratorCount)
+	}
+
+	state.MachineSpec = notebookMachineSpecModel{
+		MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
+		AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
+		AcceleratorCount: basetypes.NewInt64Value(ac64),
+		TpuTopofmty:      types.StringPointerValue(notebook.MachineSpec.TpuTopofmty),
+	}
+
+	// add in the Persisitent Disk Specification
+	if notebook.DataPersistentDiskSpec != nil {
+		state.DataPersistentDiskSpec = &notebookDataPersistentDiskSpecModel{
+			DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
+			DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
+		}
+	}
+
+	// add in the Network Specification
+	if notebook.NetworkSpec != nil {
+		state.NetworkSpec = notebookNetworkSpecModel{
+			EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
+			Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
+			Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
+		}
+	}
+
+	// add in Idle Shutdown Configuration
+
+	if notebook.IdleShutdownConfig != nil {
+		state.IdleShutdownConfig = &notebookIdleShutdownConfigModel{
+			IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
+			IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
+		}
+	}
 
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
@@ -127,6 +185,9 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			"name": schema.StringAttribute{
+				Computed: true,
+			},
 			"display_name": schema.StringAttribute{
 				Required: true,
 				PlanModifiers: []planmodifier.String{
@@ -135,6 +196,65 @@ func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"description": schema.StringAttribute{
 				Optional: true,
+			},
+			"is_default": schema.BoolAttribute{
+				Optional: true,
+			},
+			"enable_secure_boot": schema.BoolAttribute{
+				Optional: true,
+			},
+			"machine_spec": schema.SingleNestedAttribute{
+				Required: true,
+				Attributes: map[string]schema.Attribute{
+					"machine_type": schema.StringAttribute{
+						Required: true,
+					},
+					"accelerator_type": schema.StringAttribute{
+						Optional: true,
+					},
+					"accelerator_count": schema.Int64Attribute{
+						Optional: true,
+					},
+					"tpu_topofmty": schema.StringAttribute{
+						Optional: true,
+					},
+				},
+			},
+			"data_persistent_disk_spec": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"disk_type": schema.StringAttribute{
+						Optional: true,
+					},
+					"disk_size_gb": schema.StringAttribute{
+						Optional: true,
+					},
+				},
+			},
+			"network_spec": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"enable_internet_access": schema.BoolAttribute{
+						Required: true,
+					},
+					"network": schema.StringAttribute{
+						Optional: true,
+					},
+					"subnetwork": schema.StringAttribute{
+						Optional: true,
+					},
+				},
+			},
+			"idle_shutdown_config": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"idle_timeout": schema.StringAttribute{
+						Optional: true,
+					},
+					"idle_shutdown_disabled": schema.BoolAttribute{
+						Optional: true,
+					},
+				},
 			},
 		},
 	}

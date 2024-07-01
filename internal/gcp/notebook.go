@@ -103,11 +103,16 @@ func (n *NotebookClient) CreateNotebook(template *NotebookRuntimeTemplate) (*Not
 		return nil, err
 	}
 
-	name, ok := respJSON["name"].(string)
+	response, ok := respJSON["response"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("could not retrieve Response of newly created template")
+	}
 
+	name, ok := response["name"].(string)
 	if !ok {
 		return nil, fmt.Errorf("could not retrieve Name of newly created template")
 	}
+
 	return n.GetNotebook(name)
 }
 
