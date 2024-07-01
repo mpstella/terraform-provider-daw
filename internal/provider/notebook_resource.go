@@ -128,13 +128,13 @@ func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"display_name": schema.StringAttribute{
-				Computed: true,
+				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"description": schema.StringAttribute{
-				Required: false,
+				Optional: true,
 			},
 		},
 	}
