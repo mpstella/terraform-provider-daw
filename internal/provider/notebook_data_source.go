@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var (
@@ -36,7 +35,6 @@ type notebookMachineSpecModel struct {
 	MachineType      types.String `tfsdk:"machine_type"`
 	AcceleratorType  types.String `tfsdk:"accelerator_type"`
 	AcceleratorCount types.Int64  `tfsdk:"accelerator_count"`
-	TpuTopofmty      types.String `tfsdk:"tpu_topofmty"`
 }
 
 type notebookDataPersistentDiskSpecModel struct {
@@ -104,47 +102,29 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	for _, notebook := range notebooks.NotebookRuntimeTemplates {
 		notebookState := notebookModel{
-			Name:        types.StringPointerValue(notebook.Name),
-			DisplayName: types.StringPointerValue(notebook.DisplayName),
-			Description: types.StringPointerValue(notebook.Description),
-			IsDefault:   types.BoolPointerValue(notebook.IsDefault),
-		}
-
-		// collapsed a bit of the config to simplify
-		if notebook.ShieldedVmConfig != nil {
-			notebookState.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
-		}
-
-		// add in the Machine Specifications
-		var ac64 int64
-		if notebook.MachineSpec.AcceleratorCount != nil {
-			ac64 = int64(*notebook.MachineSpec.AcceleratorCount)
-		}
-
-		notebookState.MachineSpec = notebookMachineSpecModel{
-			MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
-			AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
-			AcceleratorCount: basetypes.NewInt64Value(ac64),
-			TpuTopofmty:      types.StringPointerValue(notebook.MachineSpec.TpuTopofmty),
-		}
-
-		// add in the Persisitent Disk Specification
-		notebookState.DataPersistentDiskSpec = notebookDataPersistentDiskSpecModel{
-			DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
-			DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
-		}
-
-		// add in the Network Specification
-		notebookState.NetworkSpec = notebookNetworkSpecModel{
-			EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
-			Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
-			Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
-		}
-
-		// add in Idle Shutdown Configuration
-		notebookState.IdleShutdownConfig = notebookIdleShutdownConfigModel{
-			IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
-			IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
+			Name:             types.StringPointerValue(notebook.Name),
+			DisplayName:      types.StringPointerValue(notebook.DisplayName),
+			Description:      types.StringPointerValue(notebook.Description),
+			IsDefault:        types.BoolPointerValue(notebook.IsDefault),
+			EnableSecureBoot: types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot),
+			MachineSpec: notebookMachineSpecModel{
+				MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
+				AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
+				AcceleratorCount: types.Int64PointerValue(notebook.MachineSpec.AcceleratorCount),
+			},
+			DataPersistentDiskSpec: notebookDataPersistentDiskSpecModel{
+				DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
+				DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
+			},
+			NetworkSpec: notebookNetworkSpecModel{
+				EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
+				Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
+				Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
+			},
+			IdleShutdownConfig: notebookIdleShutdownConfigModel{
+				IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
+				IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
+			},
 		}
 
 		state.Notebooks = append(state.Notebooks, notebookState)
@@ -191,9 +171,6 @@ func (n *notebookDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 									Computed: true,
 								},
 								"accelerator_count": schema.Int64Attribute{
-									Computed: true,
-								},
-								"tpu_topofmty": schema.StringAttribute{
 									Computed: true,
 								},
 							},

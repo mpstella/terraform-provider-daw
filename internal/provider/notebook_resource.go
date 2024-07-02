@@ -7,10 +7,13 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -23,15 +26,15 @@ type notebookResource struct {
 }
 
 type notebookResourceModel struct {
-	Name                   types.String                         `tfsdk:"name"`
-	DisplayName            types.String                         `tfsdk:"display_name"`
-	Description            types.String                         `tfsdk:"description"`
-	IsDefault              types.Bool                           `tfsdk:"is_default"`
-	EnableSecureBoot       types.Bool                           `tfsdk:"enable_secure_boot"`
-	MachineSpec            notebookMachineSpecModel             `tfsdk:"machine_spec"`
-	DataPersistentDiskSpec *notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
-	NetworkSpec            notebookNetworkSpecModel             `tfsdk:"network_spec"`
-	IdleShutdownConfig     *notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
+	Name                   types.String                        `tfsdk:"name"`
+	DisplayName            types.String                        `tfsdk:"display_name"`
+	Description            types.String                        `tfsdk:"description"`
+	IsDefault              types.Bool                          `tfsdk:"is_default"`
+	EnableSecureBoot       types.Bool                          `tfsdk:"enable_secure_boot"`
+	MachineSpec            notebookMachineSpecModel            `tfsdk:"machine_spec"`
+	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
+	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
+	IdleShutdownConfig     notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
 }
 
 func NewNotebookResource() resource.Resource {
@@ -41,25 +44,66 @@ func NewNotebookResource() resource.Resource {
 // Create implements resource.Resource.
 func (n *notebookResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 
+	tflog.Debug(ctx, "********* In Create *********")
+
 	var plan notebookResourceModel
 	diags := req.Plan.Get(ctx, &plan)
+
+	tflog.Debug(ctx, "********* 0 *********")
+
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		tflog.Debug(ctx, "********* 0xxxE *********")
 		return
 	}
+
+	tflog.Debug(ctx, "********* 1 *********")
 
 	notebook := gcp.NotebookRuntimeTemplate{
 		DisplayName: plan.DisplayName.ValueStringPointer(),
 		Description: plan.Description.ValueStringPointer(),
+		IsDefault:   plan.IsDefault.ValueBoolPointer(),
 		MachineSpec: &gcp.MachineSpec{
 			MachineType: plan.MachineSpec.MachineType.ValueStringPointer(),
 		},
 		NetworkSpec: &gcp.NetworkSpec{
 			EnableInternetAccess: plan.NetworkSpec.EnableInternetAccess.ValueBoolPointer(),
+			Network:              plan.NetworkSpec.Network.ValueStringPointer(),
+			Subnetwork:           plan.NetworkSpec.Subnetwork.ValueStringPointer(),
+		},
+		ShieldedVmConfig: &gcp.ShieldedVmConfig{
+			EnableSecureBoot: plan.EnableSecureBoot.ValueBoolPointer(),
+		},
+		DataPersistentDiskSpec: &gcp.DataPersistentDiskSpec{
+			DiskType:   plan.DataPersistentDiskSpec.DiskType.ValueStringPointer(),
+			DiskSizeGb: plan.DataPersistentDiskSpec.DiskSizeGb.ValueStringPointer(),
+		},
+		IdleShutdownConfig: &gcp.IdleShutdownConfig{
+			IdleTimeout:          plan.IdleShutdownConfig.IdleTimeout.ValueStringPointer(),
+			IdleShutdownDisabled: plan.IdleShutdownConfig.IdleShutdownDisabled.ValueBoolPointer(),
 		},
 	}
 
+	tflog.Debug(ctx, fmt.Sprintf("IdleShutdownDisabled: '%+v' (%+v)",
+		notebook.IdleShutdownConfig.IdleShutdownDisabled,
+		*notebook.IdleShutdownConfig.IdleShutdownDisabled))
+
+	// accelerator_type spec can be nil or set depending on machine type
+	if plan.MachineSpec.AcceleratorType.ValueString() != "" {
+
+		tflog.Debug(ctx, fmt.Sprintf("AcceleratorType is not nil but '%+v'", plan.MachineSpec.AcceleratorType.ValueStringPointer()))
+		notebook.MachineSpec.AcceleratorType = plan.MachineSpec.AcceleratorType.ValueStringPointer()
+
+		// accelerator count only make sense if acceleratory_type is set
+		if plan.MachineSpec.AcceleratorCount.ValueInt64() > 0 {
+			notebook.MachineSpec.AcceleratorCount = plan.MachineSpec.AcceleratorCount.ValueInt64Pointer()
+		}
+	}
+
+	tflog.Debug(ctx, fmt.Sprintf("notebook: %+v", notebook))
+
 	new_notebook, err := n.client.CreateNotebook(&notebook)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating template",
@@ -68,7 +112,11 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	tflog.Debug(ctx, "********* 3 *********")
+
 	plan.Name = types.StringPointerValue(new_notebook.Name)
+
+	tflog.Info(ctx, fmt.Sprintf("New template id: %s", plan.Name))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -80,6 +128,8 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 
 // Delete implements resource.Resource.
 func (n *notebookResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+
+	tflog.Debug(ctx, "********* In Delete *********")
 
 	var state notebookResourceModel
 	diags := req.State.Get(ctx, &state)
@@ -106,6 +156,8 @@ func (n *notebookResource) Metadata(_ context.Context, req resource.MetadataRequ
 // Read implements resource.Resource.
 func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 
+	tflog.Debug(ctx, "********* In Read *********")
+
 	var state notebookResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -129,48 +181,28 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 		DisplayName: types.StringPointerValue(notebook.DisplayName),
 		Description: types.StringPointerValue(notebook.Description),
 		IsDefault:   types.BoolPointerValue(notebook.IsDefault),
+		DataPersistentDiskSpec: notebookDataPersistentDiskSpecModel{
+			DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
+			DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
+		},
+		MachineSpec: notebookMachineSpecModel{
+			MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
+			AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
+			AcceleratorCount: types.Int64PointerValue(notebook.MachineSpec.AcceleratorCount),
+		},
+		IdleShutdownConfig: notebookIdleShutdownConfigModel{
+			IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
+			IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
+		},
+		NetworkSpec: notebookNetworkSpecModel{
+			EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
+			Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
+			Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
+		},
 	}
 
 	if notebook.ShieldedVmConfig != nil {
 		state.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
-	}
-
-	var ac64 int64
-	if notebook.MachineSpec.AcceleratorCount != nil {
-		ac64 = int64(*notebook.MachineSpec.AcceleratorCount)
-	}
-
-	state.MachineSpec = notebookMachineSpecModel{
-		MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
-		AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
-		AcceleratorCount: basetypes.NewInt64Value(ac64),
-		TpuTopofmty:      types.StringPointerValue(notebook.MachineSpec.TpuTopofmty),
-	}
-
-	// add in the Persisitent Disk Specification
-	if notebook.DataPersistentDiskSpec != nil {
-		state.DataPersistentDiskSpec = &notebookDataPersistentDiskSpecModel{
-			DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
-			DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
-		}
-	}
-
-	// add in the Network Specification
-	if notebook.NetworkSpec != nil {
-		state.NetworkSpec = notebookNetworkSpecModel{
-			EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
-			Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
-			Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
-		}
-	}
-
-	// add in Idle Shutdown Configuration
-
-	if notebook.IdleShutdownConfig != nil {
-		state.IdleShutdownConfig = &notebookIdleShutdownConfigModel{
-			IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
-			IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
-		}
 	}
 
 	// Set refreshed state
@@ -182,52 +214,93 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 // Schema implements resource.Resource.
-func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+
+	tflog.Debug(ctx, "********* In Schema *********")
+
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"display_name": schema.StringAttribute{
 				Required: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplaceIfConfigured(),
 				},
+				MarkdownDescription: "The Display name of the template",
 			},
 			"description": schema.StringAttribute{
 				Optional: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplaceIfConfigured(),
+				},
 			},
 			"is_default": schema.BoolAttribute{
-				Optional: true,
+				// Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+					boolplanmodifier.RequiresReplaceIfConfigured(),
+				},
+				Default: booldefault.StaticBool(false),
 			},
 			"enable_secure_boot": schema.BoolAttribute{
-				Optional: true,
+				// Required: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+					boolplanmodifier.RequiresReplaceIfConfigured(),
+				},
+				Default: booldefault.StaticBool(false),
 			},
 			"machine_spec": schema.SingleNestedAttribute{
 				Required: true,
 				Attributes: map[string]schema.Attribute{
 					"machine_type": schema.StringAttribute{
 						Required: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"accelerator_type": schema.StringAttribute{
 						Optional: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"accelerator_count": schema.Int64Attribute{
 						Optional: true,
-					},
-					"tpu_topofmty": schema.StringAttribute{
-						Optional: true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+							int64planmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 				},
 			},
 			"data_persistent_disk_spec": schema.SingleNestedAttribute{
-				Optional: true,
+				Required: true,
 				Attributes: map[string]schema.Attribute{
 					"disk_type": schema.StringAttribute{
-						Optional: true,
+						Required: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"disk_size_gb": schema.StringAttribute{
-						Optional: true,
+						Required: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 				},
 			},
@@ -236,23 +309,44 @@ func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Attributes: map[string]schema.Attribute{
 					"enable_internet_access": schema.BoolAttribute{
 						Required: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+							boolplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"network": schema.StringAttribute{
 						Optional: true,
+						// Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"subnetwork": schema.StringAttribute{
 						Optional: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 				},
 			},
 			"idle_shutdown_config": schema.SingleNestedAttribute{
-				Optional: true,
+				Required: true,
 				Attributes: map[string]schema.Attribute{
 					"idle_timeout": schema.StringAttribute{
 						Optional: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 					"idle_shutdown_disabled": schema.BoolAttribute{
-						Optional: true,
+						Required: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+							boolplanmodifier.RequiresReplaceIfConfigured(),
+						},
 					},
 				},
 			},
@@ -263,6 +357,8 @@ func (n *notebookResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 // Update implements resource.Resource.
 func (n *notebookResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 
+	tflog.Debug(ctx, "********* In Update *********")
+
 	var plan notebookResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -271,6 +367,7 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	notebook := gcp.NotebookRuntimeTemplate{
+		Name:        plan.Name.ValueStringPointer(),
 		DisplayName: plan.DisplayName.ValueStringPointer(),
 		Description: plan.Description.ValueStringPointer(),
 	}

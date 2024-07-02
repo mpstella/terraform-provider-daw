@@ -5,8 +5,7 @@ package gcp
 type MachineSpec struct {
 	MachineType      *string `json:"machineType,omitempty" yaml:"machineType,omitempty"`
 	AcceleratorType  *string `json:"acceleratorType,omitempty" yaml:"acceleratorType,omitempty"`
-	AcceleratorCount *int    `json:"acceleratorCount,omitempty" yaml:"acceleratorCount,omitempty"`
-	TpuTopofmty      *string `json:"tpuTopofmty,omitempty" yaml:"tpuTopofmty,omitempty"`
+	AcceleratorCount *int64  `json:"acceleratorCount,omitempty" yaml:"acceleratorCount,omitempty"`
 }
 
 type DataPersistentDiskSpec struct {
