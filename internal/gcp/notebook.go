@@ -166,3 +166,14 @@ func (nc *NotebookClient) curl(method string, url string, payload io.Reader) ([]
 
 	return body, nil
 }
+
+func (n *NotebookRuntimeTemplate) AsString() (string, error) {
+
+	jsonData, err := json.Marshal(n)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert the JSON byte slice to a string
+	return string(jsonData), nil
+}
