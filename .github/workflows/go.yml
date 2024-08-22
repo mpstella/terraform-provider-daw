@@ -30,7 +30,7 @@ jobs:
     - name: Build binary
       run: |
         mkdir -p build/${{ matrix.goos }}-${{ matrix.goarch }}
-        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/${{ matrix.goos }}-${{ matrix.goarch }}/tf-daw-provider main.go
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw main.go
 
 
     - name: Upload binaries
