@@ -116,18 +116,6 @@ func (n *NotebookClient) CreateNotebook(template *NotebookRuntimeTemplate) (*Not
 	return n.GetNotebook(name)
 }
 
-// the only way to update now is to delete and then create.
-// func (n *NotebookClient) UpdateNotebook(template *NotebookRuntimeTemplate) (*NotebookRuntimeTemplate, error) {
-
-// 	err := n.DeleteNotebookRuntimeTemplate(*template.Name)
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	template.Name = nil
-// 	return n.CreateNotebook(template)
-// }
-
 func (n *NotebookClient) DeleteNotebookRuntimeTemplate(name string) error {
 
 	url := fmt.Sprintf("%s/%s", serviceEndpoint, name)
