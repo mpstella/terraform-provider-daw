@@ -11,12 +11,6 @@ provider "daw" {
   location  = "australia-southeast1"
 }
 
-data "daw_notebook" "example" {}
-
-output "my_notebooks" {
-  value = data.daw_notebook.example
-}
-
 resource "daw_notebook" "test" {
   
   display_name = "this was deployed by terraform"
@@ -27,6 +21,7 @@ resource "daw_notebook" "test" {
   }
 
   network_spec = {
+    network = "projects/1019340507365/global/networks/default"
     enable_internet_access = true
   }
 
@@ -36,7 +31,14 @@ resource "daw_notebook" "test" {
   }
 
   idle_shutdown_config = {
-    idle_shutdown_disabled = false
-    idle_timeout = "600s"
+    idle_timeout = "86400s"
   }
+}
+
+data "daw_notebook" "example" {
+  depends_on = [ daw_notebook.test ]
+}
+
+output "my_notebooks" {
+  value = data.daw_notebook.example
 }

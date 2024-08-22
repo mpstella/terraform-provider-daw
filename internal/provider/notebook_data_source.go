@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -58,7 +59,9 @@ type notebookDataSourceModel struct {
 }
 
 // Configure implements datasource.DataSourceWithConfigure.
-func (n *notebookDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (n *notebookDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+
+	tflog.Debug(ctx, "********* In Configure (notebook_data_source) *********")
 
 	if req.ProviderData == nil {
 		return
@@ -88,6 +91,8 @@ func (n *notebookDataSource) Metadata(_ context.Context, req datasource.Metadata
 // Read implements datasource.DataSource.
 func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 
+	tflog.Debug(ctx, "********* In Read (notebook_data_source) *********")
+
 	var state notebookDataSourceModel
 
 	notebooks, err := n.client.GetNotebooks()
@@ -101,30 +106,52 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 
 	for _, notebook := range notebooks.NotebookRuntimeTemplates {
+
+		n, _ := notebook.AsString()
+
+		tflog.Debug(ctx, "********* notebook *********", map[string]interface{}{"notebook": n})
+
 		notebookState := notebookModel{
-			Name:             types.StringPointerValue(notebook.Name),
-			DisplayName:      types.StringPointerValue(notebook.DisplayName),
-			Description:      types.StringPointerValue(notebook.Description),
-			IsDefault:        types.BoolPointerValue(notebook.IsDefault),
+			Name:        types.StringPointerValue(notebook.Name),
+			DisplayName: types.StringPointerValue(notebook.DisplayName),
+			Description: types.StringPointerValue(notebook.Description),
+
 			EnableSecureBoot: types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot),
-			MachineSpec: notebookMachineSpecModel{
-				MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
-				AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
-				AcceleratorCount: types.Int64PointerValue(notebook.MachineSpec.AcceleratorCount),
-			},
+			IsDefault:        types.BoolPointerValue(notebook.IsDefault),
+
 			DataPersistentDiskSpec: notebookDataPersistentDiskSpecModel{
 				DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
 				DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
 			},
+
 			NetworkSpec: notebookNetworkSpecModel{
 				EnableInternetAccess: types.BoolPointerValue(notebook.NetworkSpec.EnableInternetAccess),
 				Network:              types.StringPointerValue(notebook.NetworkSpec.Network),
 				Subnetwork:           types.StringPointerValue(notebook.NetworkSpec.Subnetwork),
 			},
+
 			IdleShutdownConfig: notebookIdleShutdownConfigModel{
-				IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
 				IdleShutdownDisabled: types.BoolPointerValue(notebook.IdleShutdownConfig.IdleShutdownDisabled),
+				IdleTimeout:          types.StringPointerValue(notebook.IdleShutdownConfig.IdleTimeout),
 			},
+
+			MachineSpec: notebookMachineSpecModel{
+				MachineType:      types.StringPointerValue(notebook.MachineSpec.MachineType),
+				AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
+				AcceleratorCount: types.Int64PointerValue(notebook.MachineSpec.AcceleratorCount),
+			},
+		}
+
+		if notebook.IsDefault == nil {
+			notebookState.IsDefault = types.BoolValue(false)
+		}
+
+		if notebook.IdleShutdownConfig.IdleShutdownDisabled == nil {
+			notebookState.IdleShutdownConfig.IdleShutdownDisabled = types.BoolValue(false)
+		}
+
+		if notebook.ShieldedVmConfig.EnableSecureBoot == nil {
+			notebookState.EnableSecureBoot = types.BoolValue(false)
 		}
 
 		state.Notebooks = append(state.Notebooks, notebookState)
@@ -139,7 +166,10 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 }
 
 // Schema implements datasource.DataSource.
-func (n *notebookDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (n *notebookDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+
+	tflog.Debug(ctx, "********* In Schema (notebook_data_source) *********")
+
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"notebooks": schema.ListNestedAttribute{
@@ -162,16 +192,20 @@ func (n *notebookDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							Computed: true,
 						},
 						"machine_spec": schema.SingleNestedAttribute{
-							Computed: true,
+							// Computed: true,
+							Optional: true,
 							Attributes: map[string]schema.Attribute{
 								"machine_type": schema.StringAttribute{
-									Computed: true,
+									// Computed: true,
+									Required: true,
 								},
 								"accelerator_type": schema.StringAttribute{
-									Computed: true,
+									Optional: true,
+									// Computed: true,
 								},
 								"accelerator_count": schema.Int64Attribute{
-									Computed: true,
+									Optional: true,
+									// Computed: true,
 								},
 							},
 						},
@@ -187,13 +221,13 @@ func (n *notebookDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							},
 						},
 						"network_spec": schema.SingleNestedAttribute{
-							Computed: true,
+							Required: true,
 							Attributes: map[string]schema.Attribute{
 								"enable_internet_access": schema.BoolAttribute{
 									Computed: true,
 								},
 								"network": schema.StringAttribute{
-									Computed: true,
+									Required: true,
 								},
 								"subnetwork": schema.StringAttribute{
 									Computed: true,
@@ -201,13 +235,13 @@ func (n *notebookDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							},
 						},
 						"idle_shutdown_config": schema.SingleNestedAttribute{
-							Computed: true,
+							Optional: true,
 							Attributes: map[string]schema.Attribute{
 								"idle_timeout": schema.StringAttribute{
-									Computed: true,
+									Optional: true,
 								},
 								"idle_shutdown_disabled": schema.BoolAttribute{
-									Computed: true,
+									Optional: true,
 								},
 							},
 						},

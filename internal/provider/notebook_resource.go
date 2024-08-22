@@ -3,14 +3,19 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"terraform-provider-daw/internal/gcp"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -37,6 +42,57 @@ type notebookResourceModel struct {
 	IdleShutdownConfig     notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
 }
 
+func (n notebookResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+
+	tflog.Debug(ctx, "********* In ValidateConfig(notebook_resource) *********")
+
+	var data notebookResourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// check that these values don't conflict
+	if data.IdleShutdownConfig.IdleShutdownDisabled == types.BoolValue(true) && !data.IdleShutdownConfig.IdleTimeout.IsNull() {
+		resp.Diagnostics.AddAttributeWarning(
+			path.Root("idle_shutdown_disabled"),
+			"idle_shutdown_disabled can't be set to True and have a value in idle_timeout",
+			"Expected idle_timeout to be nil if idle_shutdown_disabled is set to True.",
+		)
+	}
+
+	if !data.IdleShutdownConfig.IdleTimeout.IsNull() {
+		val := data.IdleShutdownConfig.IdleTimeout.ValueString()
+		if !strings.HasSuffix(val, "s") {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("idle_timeout"),
+				"idle_timeout must end in 's'",
+				"Expected idle_timeout end in 's' as it is defined in seconds",
+			)
+		}
+		val = strings.TrimSuffix(val, "s")
+		num, err := strconv.Atoi(val)
+		if err != nil {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("idle_timeout"),
+				"idle_timeout must end in 's' and be a valid integer",
+				"Expected idle_timeout end in 's' as it is defined in seconds as an integer",
+			)
+		} else {
+			if num < 600 || num > 86400 {
+				// [600, 86400]
+				resp.Diagnostics.AddAttributeWarning(
+					path.Root("idle_timeout"),
+					"idle_timeout must end in 's' and be a valid integer between 600 and 86400",
+					"Expected idle_timeout to be between 600 and 86400",
+				)
+			}
+		}
+	}
+}
+
 func NewNotebookResource() resource.Resource {
 	return &notebookResource{}
 }
@@ -44,20 +100,15 @@ func NewNotebookResource() resource.Resource {
 // Create implements resource.Resource.
 func (n *notebookResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 
-	tflog.Debug(ctx, "********* In Create *********")
+	tflog.Debug(ctx, "********* In Create(notebook_resource) *********")
 
 	var plan notebookResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 
-	tflog.Debug(ctx, "********* 0 *********")
-
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
-		tflog.Debug(ctx, "********* 0xxxE *********")
 		return
 	}
-
-	tflog.Debug(ctx, "********* 1 *********")
 
 	notebook := gcp.NotebookRuntimeTemplate{
 		DisplayName: plan.DisplayName.ValueStringPointer(),
@@ -83,10 +134,6 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 			IdleShutdownDisabled: plan.IdleShutdownConfig.IdleShutdownDisabled.ValueBoolPointer(),
 		},
 	}
-
-	tflog.Debug(ctx, fmt.Sprintf("IdleShutdownDisabled: '%+v' (%+v)",
-		notebook.IdleShutdownConfig.IdleShutdownDisabled,
-		*notebook.IdleShutdownConfig.IdleShutdownDisabled))
 
 	// accelerator_type spec can be nil or set depending on machine type
 	if plan.MachineSpec.AcceleratorType.ValueString() != "" {
@@ -129,7 +176,7 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 // Delete implements resource.Resource.
 func (n *notebookResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 
-	tflog.Debug(ctx, "********* In Delete *********")
+	tflog.Debug(ctx, "********* In Delete(notebook_resource) *********")
 
 	var state notebookResourceModel
 	diags := req.State.Get(ctx, &state)
@@ -137,15 +184,17 @@ func (n *notebookResource) Delete(ctx context.Context, req resource.DeleteReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// going to ignore deletes as this only occurs when resource has already been deleted
 
-	err := n.client.DeleteNotebookRuntimeTemplate(state.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Deleting template",
-			"Could not delete template, unexpected error: "+err.Error(),
-		)
-		return
-	}
+	n.client.DeleteNotebookRuntimeTemplate(state.Name.ValueString())
+	// err := n.client.DeleteNotebookRuntimeTemplate(state.Name.ValueString())
+	// if err != nil {
+	// 	resp.Diagnostics.AddError(
+	// 		"Error Deleting template",
+	// 		"Could not delete template, unexpected error: "+err.Error(),
+	// 	)
+	// 	return
+	// }
 }
 
 // Metadata implements resource.Resource.
@@ -156,7 +205,7 @@ func (n *notebookResource) Metadata(_ context.Context, req resource.MetadataRequ
 // Read implements resource.Resource.
 func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 
-	tflog.Debug(ctx, "********* In Read *********")
+	tflog.Debug(ctx, "********* In Read(notebook_resource) *********")
 
 	var state notebookResourceModel
 
@@ -201,8 +250,14 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 		},
 	}
 
-	if notebook.ShieldedVmConfig != nil {
-		state.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
+	if notebook.IsDefault == nil {
+		state.IsDefault = types.BoolValue(false)
+	}
+	if notebook.IdleShutdownConfig.IdleShutdownDisabled == nil {
+		state.IdleShutdownConfig.IdleShutdownDisabled = types.BoolValue(false)
+	}
+	if notebook.ShieldedVmConfig.EnableSecureBoot == nil {
+		state.EnableSecureBoot = types.BoolValue(false)
 	}
 
 	// Set refreshed state
@@ -216,7 +271,7 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 // Schema implements resource.Resource.
 func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 
-	tflog.Debug(ctx, "********* In Schema *********")
+	tflog.Debug(ctx, "********* In Schema(notebook_resource) *********")
 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
@@ -272,14 +327,14 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 					"accelerator_type": schema.StringAttribute{
 						Optional: true,
 						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
+							// stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
 						},
 					},
 					"accelerator_count": schema.Int64Attribute{
 						Optional: true,
 						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
+							// int64planmodifier.UseStateForUnknown(),
 							int64planmodifier.RequiresReplaceIfConfigured(),
 						},
 					},
@@ -306,6 +361,11 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			},
 			"network_spec": schema.SingleNestedAttribute{
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+					objectplanmodifier.RequiresReplace(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enable_internet_access": schema.BoolAttribute{
 						Required: true,
@@ -315,15 +375,15 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 						},
 					},
 					"network": schema.StringAttribute{
-						Optional: true,
-						// Computed: true,
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-							stringplanmodifier.RequiresReplaceIfConfigured(),
-						},
+						Required: true,
+						// PlanModifiers: []planmodifier.String{
+						// 	// stringplanmodifier.UseStateForUnknown(),
+						// 	stringplanmodifier.RequiresReplaceIfConfigured(),
+						// },
 					},
 					"subnetwork": schema.StringAttribute{
 						Optional: true,
+						// Computed: true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
@@ -332,21 +392,29 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"idle_shutdown_config": schema.SingleNestedAttribute{
-				Required: true,
+				Optional: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+					objectplanmodifier.RequiresReplace(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"idle_timeout": schema.StringAttribute{
 						Optional: true,
+						Computed: true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
 						},
+						Default: stringdefault.StaticString("600s"),
 					},
 					"idle_shutdown_disabled": schema.BoolAttribute{
-						Required: true,
+						Optional: true,
+						Computed: true,
 						PlanModifiers: []planmodifier.Bool{
 							boolplanmodifier.UseStateForUnknown(),
 							boolplanmodifier.RequiresReplaceIfConfigured(),
 						},
+						Default: booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -357,7 +425,10 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 // Update implements resource.Resource.
 func (n *notebookResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 
-	tflog.Debug(ctx, "********* In Update *********")
+	tflog.Debug(ctx, "********* In Update(notebook_resource) *********")
+
+	// just going to RETURN for now as there is nothing to update until i test CMEK
+	return
 
 	var plan notebookResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -391,7 +462,10 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 }
 
-func (n *notebookResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (n *notebookResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+
+	tflog.Debug(ctx, "********* In Configure(notebook_resource) *********")
+
 	// Add a nil check when handling ProviderData because Terraform
 	// sets that data after it calls the ConfigureProvider RPC.
 	if req.ProviderData == nil {
