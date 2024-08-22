@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -26,28 +25,34 @@ var (
 	_ resource.ResourceWithConfigure = &notebookResource{}
 )
 
-type notebookResource struct {
-	client *gcp.NotebookClient
-}
+// just making alias to not get confused
+type notebookResource gcpNotebookClient
 
-type notebookResourceModel struct {
-	Name                   types.String                        `tfsdk:"name"`
-	DisplayName            types.String                        `tfsdk:"display_name"`
-	Description            types.String                        `tfsdk:"description"`
-	IsDefault              types.Bool                          `tfsdk:"is_default"`
-	EnableSecureBoot       types.Bool                          `tfsdk:"enable_secure_boot"`
-	KmsKeyName             types.String                        `tfsdk:"kms_key_name"`
-	MachineSpec            notebookMachineSpecModel            `tfsdk:"machine_spec"`
-	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
-	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
-	IdleShutdownConfig     notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
+func (n *notebookResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+
+	// Add a nil check when handling ProviderData because Terraform
+	// sets that data after it calls the ConfigureProvider RPC.
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*gcp.NotebookClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *gcp.NotebookClient, got: %T", req.ProviderData),
+		)
+
+		return
+	}
+
+	n.client = client
 }
 
 func (n notebookResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 
-	tflog.Debug(ctx, "********* In ValidateConfig(notebook_resource) *********")
-
-	var data notebookResourceModel
+	var data notebookModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
@@ -56,7 +61,7 @@ func (n notebookResource) ValidateConfig(ctx context.Context, req resource.Valid
 	}
 
 	// check that these values don't conflict
-	if data.IdleShutdownConfig.IdleShutdownDisabled == types.BoolValue(true) && !data.IdleShutdownConfig.IdleTimeout.IsNull() {
+	if data.IdleShutdownConfig.IdleShutdownDisabled.ValueBool() && !data.IdleShutdownConfig.IdleTimeout.IsNull() {
 		resp.Diagnostics.AddAttributeWarning(
 			path.Root("idle_shutdown_disabled"),
 			"idle_shutdown_disabled can't be set to True and have a value in idle_timeout",
@@ -64,6 +69,7 @@ func (n notebookResource) ValidateConfig(ctx context.Context, req resource.Valid
 		)
 	}
 
+	// check the idleTimeout values are correctly applied
 	if !data.IdleShutdownConfig.IdleTimeout.IsNull() {
 		val := data.IdleShutdownConfig.IdleTimeout.ValueString()
 		if !strings.HasSuffix(val, "s") {
@@ -108,8 +114,16 @@ func (n notebookResource) ValidateConfig(ctx context.Context, req resource.Valid
 				"subnetwork can't be nil if enable_internet_access is false",
 				"Expected subnetwork to be configured",
 			)
-
 		}
+	}
+
+	// check machine type accelerator settings
+	if data.MachineSpec.AcceleratorType.IsNull() && !data.MachineSpec.AcceleratorCount.IsNull() {
+		resp.Diagnostics.AddAttributeWarning(
+			path.Root("accelerator_count"),
+			"accelerator_count must be nil if accelerator_type is nil",
+			"Expected accelerator_count to not be configured",
+		)
 	}
 }
 
@@ -122,7 +136,7 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 
 	tflog.Debug(ctx, "********* In Create(notebook_resource) *********")
 
-	var plan notebookResourceModel
+	var plan notebookModel
 	diags := req.Plan.Get(ctx, &plan)
 
 	resp.Diagnostics.Append(diags...)
@@ -153,15 +167,11 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 			IdleTimeout:          plan.IdleShutdownConfig.IdleTimeout.ValueStringPointer(),
 			IdleShutdownDisabled: plan.IdleShutdownConfig.IdleShutdownDisabled.ValueBoolPointer(),
 		},
-		// EncryptionSpec: &gcp.EncryptionSpec{
-		// 	KmsKeyName: plan.KmsKeyName.ValueStringPointer(),
-		// },
 	}
 
 	// accelerator_type spec can be nil or set depending on machine type
-	if plan.MachineSpec.AcceleratorType.ValueString() != "" {
+	if !plan.MachineSpec.AcceleratorType.IsNull() {
 
-		tflog.Debug(ctx, fmt.Sprintf("AcceleratorType is not nil but '%+v'", plan.MachineSpec.AcceleratorType.ValueStringPointer()))
 		notebook.MachineSpec.AcceleratorType = plan.MachineSpec.AcceleratorType.ValueStringPointer()
 
 		// accelerator count only make sense if acceleratory_type is set
@@ -201,23 +211,15 @@ func (n *notebookResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	tflog.Debug(ctx, "********* In Delete(notebook_resource) *********")
 
-	var state notebookResourceModel
+	var state notebookModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// going to ignore deletes as this only occurs when resource has already been deleted
 
+	// going to ignore deletes as this only occurs when resource has already been deleted
 	n.client.DeleteNotebookRuntimeTemplate(state.Name.ValueString())
-	// err := n.client.DeleteNotebookRuntimeTemplate(state.Name.ValueString())
-	// if err != nil {
-	// 	resp.Diagnostics.AddError(
-	// 		"Error Deleting template",
-	// 		"Could not delete template, unexpected error: "+err.Error(),
-	// 	)
-	// 	return
-	// }
 }
 
 // Metadata implements resource.Resource.
@@ -230,7 +232,7 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	tflog.Debug(ctx, "********* In Read(notebook_resource) *********")
 
-	var state notebookResourceModel
+	var state notebookModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -248,7 +250,7 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	// Overwrite with refreshed state
-	state = notebookResourceModel{
+	state = notebookModel{
 		Name:        types.StringPointerValue(notebook.Name),
 		DisplayName: types.StringPointerValue(notebook.DisplayName),
 		Description: types.StringPointerValue(notebook.Description),
@@ -289,12 +291,6 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 		state.KmsKeyName = types.StringNull()
 	}
 
-	// if notebook.EncryptionSpec != nil {
-	// 	state.EncryptionSpec.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
-	// } else {
-	// 	state.EncryptionSpec.KmsKeyName = types.StringNull()
-	// }
-
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -332,7 +328,7 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"is_default": schema.BoolAttribute{
-				// Optional: true,
+				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
@@ -341,7 +337,6 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 				Default: booldefault.StaticBool(false),
 			},
 			"enable_secure_boot": schema.BoolAttribute{
-				// Required: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
@@ -351,7 +346,6 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			},
 			"kms_key_name": schema.StringAttribute{
 				Optional: true,
-				// Computed: true,
 			},
 			"machine_spec": schema.SingleNestedAttribute{
 				Required: true,
@@ -366,14 +360,14 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 					"accelerator_type": schema.StringAttribute{
 						Optional: true,
 						PlanModifiers: []planmodifier.String{
-							// stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
 						},
 					},
 					"accelerator_count": schema.Int64Attribute{
 						Optional: true,
 						PlanModifiers: []planmodifier.Int64{
-							// int64planmodifier.UseStateForUnknown(),
+							int64planmodifier.UseStateForUnknown(),
 							int64planmodifier.RequiresReplaceIfConfigured(),
 						},
 					},
@@ -415,14 +409,9 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 					},
 					"network": schema.StringAttribute{
 						Required: true,
-						// PlanModifiers: []planmodifier.String{
-						// 	// stringplanmodifier.UseStateForUnknown(),
-						// 	stringplanmodifier.RequiresReplaceIfConfigured(),
-						// },
 					},
 					"subnetwork": schema.StringAttribute{
 						Optional: true,
-						// Computed: true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
@@ -439,12 +428,10 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 				Attributes: map[string]schema.Attribute{
 					"idle_timeout": schema.StringAttribute{
 						Optional: true,
-						Computed: true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 							stringplanmodifier.RequiresReplaceIfConfigured(),
 						},
-						Default: stringdefault.StaticString("600s"),
 					},
 					"idle_shutdown_disabled": schema.BoolAttribute{
 						Optional: true,
@@ -466,7 +453,7 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 
 	tflog.Debug(ctx, "********* In Update(notebook_resource) *********")
 
-	var plan notebookResourceModel
+	var plan notebookModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -496,28 +483,4 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-}
-
-func (n *notebookResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-
-	tflog.Debug(ctx, "********* In Configure(notebook_resource) *********")
-
-	// Add a nil check when handling ProviderData because Terraform
-	// sets that data after it calls the ConfigureProvider RPC.
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(*gcp.NotebookClient)
-
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *gcp.NotebookClient, got: %T", req.ProviderData),
-		)
-
-		return
-	}
-
-	n.client = client
 }

@@ -16,53 +16,11 @@ var (
 	_ datasource.DataSourceWithConfigure = &notebookDataSource{}
 )
 
-type notebookDataSource struct {
-	client *gcp.NotebookClient
-}
-
-type notebookModel struct {
-	Name                   types.String                        `tfsdk:"name"`
-	DisplayName            types.String                        `tfsdk:"display_name"`
-	Description            types.String                        `tfsdk:"description"`
-	IsDefault              types.Bool                          `tfsdk:"is_default"`
-	EnableSecureBoot       types.Bool                          `tfsdk:"enable_secure_boot"`
-	KmsKeyName             types.String                        `tfsdk:"kms_key_name"`
-	MachineSpec            notebookMachineSpecModel            `tfsdk:"machine_spec"`
-	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
-	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
-	IdleShutdownConfig     notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
-}
-
-type notebookMachineSpecModel struct {
-	MachineType      types.String `tfsdk:"machine_type"`
-	AcceleratorType  types.String `tfsdk:"accelerator_type"`
-	AcceleratorCount types.Int64  `tfsdk:"accelerator_count"`
-}
-
-type notebookDataPersistentDiskSpecModel struct {
-	DiskType   types.String `tfsdk:"disk_type"`
-	DiskSizeGb types.String `tfsdk:"disk_size_gb"`
-}
-
-type notebookNetworkSpecModel struct {
-	EnableInternetAccess types.Bool   `tfsdk:"enable_internet_access"`
-	Network              types.String `tfsdk:"network"`
-	Subnetwork           types.String `tfsdk:"subnetwork"`
-}
-
-type notebookIdleShutdownConfigModel struct {
-	IdleTimeout          types.String `tfsdk:"idle_timeout"`
-	IdleShutdownDisabled types.Bool   `tfsdk:"idle_shutdown_disabled"`
-}
-
-type notebookDataSourceModel struct {
-	Notebooks []notebookModel `tfsdk:"notebooks"`
-}
+// just making alias to not get confused
+type notebookDataSource gcpNotebookClient
 
 // Configure implements datasource.DataSourceWithConfigure.
 func (n *notebookDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-
-	tflog.Debug(ctx, "********* In Configure (notebook_data_source) *********")
 
 	if req.ProviderData == nil {
 		return
