@@ -141,17 +141,16 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		if notebook.ShieldedVmConfig != nil {
-			if notebook.ShieldedVmConfig.EnableSecureBoot != nil {
-				notebookState.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
-			} else {
-				notebookState.EnableSecureBoot = types.BoolValue(false)
-			}
+			notebookState.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
+		}
+
+		// might be nil still, set to false
+		if notebookState.EnableSecureBoot.IsNull() {
+			notebookState.EnableSecureBoot = types.BoolValue(false)
 		}
 
 		if notebook.EncryptionSpec != nil {
 			notebookState.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
-			// } else {
-			// 	notebookState.KmsKeyName = types.StringNull()
 		}
 
 		if notebook.NetworkSpec.EnableInternetAccess == nil {
@@ -164,10 +163,6 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 		if notebook.IdleShutdownConfig.IdleShutdownDisabled == nil {
 			notebookState.IdleShutdownConfig.IdleShutdownDisabled = types.BoolValue(false)
-		}
-
-		if notebook.ShieldedVmConfig.EnableSecureBoot == nil {
-			notebookState.EnableSecureBoot = types.BoolValue(false)
 		}
 
 		state.Notebooks = append(state.Notebooks, notebookState)
