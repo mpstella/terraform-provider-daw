@@ -91,6 +91,25 @@ func (n notebookResource) ValidateConfig(ctx context.Context, req resource.Valid
 			}
 		}
 	}
+
+	// if enable_internet_access is false then both network and subdomain need to be set
+	if !data.NetworkSpec.EnableInternetAccess.ValueBool() {
+		if data.NetworkSpec.Network.IsNull() {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("network"),
+				"network can't be nil if enable_internet_access is false",
+				"Expected network to be configured",
+			)
+		}
+		if data.NetworkSpec.Subnetwork.IsNull() {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("subnetwork"),
+				"subnetwork can't be nil if enable_internet_access is false",
+				"Expected subnetwork to be configured",
+			)
+
+		}
+	}
 }
 
 func NewNotebookResource() resource.Resource {
