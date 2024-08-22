@@ -36,5 +36,5 @@ jobs:
     - name: Upload binaries
       uses: actions/upload-artifact@v3
       with:
-        name: tf-daw-provider-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: build/${{ matrix.goos }}-${{ matrix.goarch }}/tf-daw-provider*        
+        name: terraform-provider-daw-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw*        
