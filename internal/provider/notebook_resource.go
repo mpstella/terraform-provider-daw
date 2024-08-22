@@ -36,6 +36,7 @@ type notebookResourceModel struct {
 	Description            types.String                        `tfsdk:"description"`
 	IsDefault              types.Bool                          `tfsdk:"is_default"`
 	EnableSecureBoot       types.Bool                          `tfsdk:"enable_secure_boot"`
+	KmsKeyName             types.String                        `tfsdk:"kms_key_name"`
 	MachineSpec            notebookMachineSpecModel            `tfsdk:"machine_spec"`
 	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
 	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
@@ -152,6 +153,9 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 			IdleTimeout:          plan.IdleShutdownConfig.IdleTimeout.ValueStringPointer(),
 			IdleShutdownDisabled: plan.IdleShutdownConfig.IdleShutdownDisabled.ValueBoolPointer(),
 		},
+		// EncryptionSpec: &gcp.EncryptionSpec{
+		// 	KmsKeyName: plan.KmsKeyName.ValueStringPointer(),
+		// },
 	}
 
 	// accelerator_type spec can be nil or set depending on machine type
@@ -166,7 +170,11 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 		}
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("notebook: %+v", notebook))
+	if !plan.KmsKeyName.IsNull() {
+		notebook.EncryptionSpec = &gcp.EncryptionSpec{
+			KmsKeyName: plan.KmsKeyName.ValueStringPointer(),
+		}
+	}
 
 	new_notebook, err := n.client.CreateNotebook(&notebook)
 
@@ -178,11 +186,7 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	tflog.Debug(ctx, "********* 3 *********")
-
 	plan.Name = types.StringPointerValue(new_notebook.Name)
-
-	tflog.Info(ctx, fmt.Sprintf("New template id: %s", plan.Name))
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -279,6 +283,18 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 		state.EnableSecureBoot = types.BoolValue(false)
 	}
 
+	if notebook.EncryptionSpec != nil {
+		state.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
+	} else {
+		state.KmsKeyName = types.StringNull()
+	}
+
+	// if notebook.EncryptionSpec != nil {
+	// 	state.EncryptionSpec.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
+	// } else {
+	// 	state.EncryptionSpec.KmsKeyName = types.StringNull()
+	// }
+
 	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -332,6 +348,10 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 					boolplanmodifier.RequiresReplaceIfConfigured(),
 				},
 				Default: booldefault.StaticBool(false),
+			},
+			"kms_key_name": schema.StringAttribute{
+				Optional: true,
+				// Computed: true,
 			},
 			"machine_spec": schema.SingleNestedAttribute{
 				Required: true,

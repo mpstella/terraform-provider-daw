@@ -33,6 +33,10 @@ type ShieldedVmConfig struct {
 	EnableSecureBoot *bool `json:"enableSecureBoot,omitempty" yaml:"enableSecureBoot,omitempty"`
 }
 
+type EncryptionSpec struct {
+	KmsKeyName *string `json:"kmsKeyName,omitempty" yaml:"kmsKeyName,omitempty"`
+}
+
 type NotebookRuntimeTemplate struct {
 	Name                   *string                 `json:"name,omitempty" yaml:"name,omitempty"`
 	DisplayName            *string                 `json:"displayName" yaml:"displayName"`
@@ -50,6 +54,7 @@ type NotebookRuntimeTemplate struct {
 	UpdateTime             *string                 `json:"updateTime,omitempty" yaml:"updateTime,omitempty"`
 	NotebookRuntimeType    *string                 `json:"notebookRuntimeType,omitempty" yaml:"notebookRuntimeType,omitempty"`
 	ShieldedVmConfig       *ShieldedVmConfig       `json:"shieldedVmConfig,omitempty" yaml:"shieldedVmConfig,omitempty"`
+	EncryptionSpec         *EncryptionSpec         `json:"encryptionSpec,omitempty"`
 }
 
 // this get's returned when we perform a GET

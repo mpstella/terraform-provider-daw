@@ -26,6 +26,7 @@ type notebookModel struct {
 	Description            types.String                        `tfsdk:"description"`
 	IsDefault              types.Bool                          `tfsdk:"is_default"`
 	EnableSecureBoot       types.Bool                          `tfsdk:"enable_secure_boot"`
+	KmsKeyName             types.String                        `tfsdk:"kms_key_name"`
 	MachineSpec            notebookMachineSpecModel            `tfsdk:"machine_spec"`
 	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
 	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
@@ -115,10 +116,7 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 			Name:        types.StringPointerValue(notebook.Name),
 			DisplayName: types.StringPointerValue(notebook.DisplayName),
 			Description: types.StringPointerValue(notebook.Description),
-
-			EnableSecureBoot: types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot),
-			IsDefault:        types.BoolPointerValue(notebook.IsDefault),
-
+			IsDefault:   types.BoolPointerValue(notebook.IsDefault),
 			DataPersistentDiskSpec: notebookDataPersistentDiskSpecModel{
 				DiskType:   types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskType),
 				DiskSizeGb: types.StringPointerValue(notebook.DataPersistentDiskSpec.DiskSizeGb),
@@ -140,6 +138,24 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 				AcceleratorType:  types.StringPointerValue(notebook.MachineSpec.AcceleratorType),
 				AcceleratorCount: types.Int64PointerValue(notebook.MachineSpec.AcceleratorCount),
 			},
+		}
+
+		if notebook.ShieldedVmConfig != nil {
+			if notebook.ShieldedVmConfig.EnableSecureBoot != nil {
+				notebookState.EnableSecureBoot = types.BoolPointerValue(notebook.ShieldedVmConfig.EnableSecureBoot)
+			} else {
+				notebookState.EnableSecureBoot = types.BoolValue(false)
+			}
+		}
+
+		if notebook.EncryptionSpec != nil {
+			notebookState.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
+			// } else {
+			// 	notebookState.KmsKeyName = types.StringNull()
+		}
+
+		if notebook.NetworkSpec.EnableInternetAccess == nil {
+			notebookState.NetworkSpec.EnableInternetAccess = types.BoolValue(false)
 		}
 
 		if notebook.IsDefault == nil {
@@ -189,6 +205,10 @@ func (n *notebookDataSource) Schema(ctx context.Context, _ datasource.SchemaRequ
 							Computed: true,
 						},
 						"enable_secure_boot": schema.BoolAttribute{
+							Computed: true,
+						},
+						"kms_key_name": schema.StringAttribute{
+							Optional: true,
 							Computed: true,
 						},
 						"machine_spec": schema.SingleNestedAttribute{
