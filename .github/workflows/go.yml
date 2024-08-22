@@ -30,11 +30,11 @@ jobs:
     - name: Build binary
       run: |
         mkdir -p build/${{ matrix.goos }}-${{ matrix.goarch }}
-        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/${{ matrix.goos }}-${{ matrix.goarch }}/dcloud main.go
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/${{ matrix.goos }}-${{ matrix.goarch }}/tf-daw-provider main.go
 
 
     - name: Upload binaries
       uses: actions/upload-artifact@v3
       with:
-        name: dcloud-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: build/${{ matrix.goos }}-${{ matrix.goarch }}/dcloud*        
+        name: tf-daw-provider-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: build/${{ matrix.goos }}-${{ matrix.goarch }}/tf-daw-provider*        
