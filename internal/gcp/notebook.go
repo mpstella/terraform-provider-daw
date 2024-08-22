@@ -117,16 +117,16 @@ func (n *NotebookClient) CreateNotebook(template *NotebookRuntimeTemplate) (*Not
 }
 
 // the only way to update now is to delete and then create.
-func (n *NotebookClient) UpdateNotebook(template *NotebookRuntimeTemplate) (*NotebookRuntimeTemplate, error) {
+// func (n *NotebookClient) UpdateNotebook(template *NotebookRuntimeTemplate) (*NotebookRuntimeTemplate, error) {
 
-	err := n.DeleteNotebookRuntimeTemplate(*template.Name)
+// 	err := n.DeleteNotebookRuntimeTemplate(*template.Name)
 
-	if err != nil {
-		return nil, err
-	}
-	template.Name = nil
-	return n.CreateNotebook(template)
-}
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	template.Name = nil
+// 	return n.CreateNotebook(template)
+// }
 
 func (n *NotebookClient) DeleteNotebookRuntimeTemplate(name string) error {
 
@@ -176,4 +176,17 @@ func (n *NotebookRuntimeTemplate) AsString() (string, error) {
 
 	// Convert the JSON byte slice to a string
 	return string(jsonData), nil
+}
+
+func (nc *NotebookClient) UpdateNotebook(template *NotebookRuntimeTemplate) error {
+
+	url := fmt.Sprintf("%s/%s?updateMask=encryptionSpec.kmsKeyName", serviceEndpoint, *template.Name)
+	payload, err := json.Marshal(template)
+
+	if err != nil {
+		return err
+	}
+	_, err = nc.curl(http.MethodPatch, url, bytes.NewBuffer(payload))
+
+	return err
 }

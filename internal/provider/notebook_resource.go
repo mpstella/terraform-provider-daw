@@ -466,9 +466,6 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 
 	tflog.Debug(ctx, "********* In Update(notebook_resource) *********")
 
-	// just going to RETURN for now as there is nothing to update until i test CMEK
-	return
-
 	var plan notebookResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -477,21 +474,21 @@ func (n *notebookResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	notebook := gcp.NotebookRuntimeTemplate{
-		Name:        plan.Name.ValueStringPointer(),
-		DisplayName: plan.DisplayName.ValueStringPointer(),
-		Description: plan.Description.ValueStringPointer(),
+		Name: plan.Name.ValueStringPointer(),
+		EncryptionSpec: &gcp.EncryptionSpec{
+			KmsKeyName: plan.KmsKeyName.ValueStringPointer(),
+		},
 	}
 
-	new_notebook, err := n.client.UpdateNotebook(&notebook)
+	err := n.client.UpdateNotebook(&notebook)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error creating template",
-			"Could not create template, unexpected error: "+err.Error(),
+			"Error updating template",
+			"Could update template, unexpected error: "+err.Error(),
 		)
 		return
 	}
-
-	plan.Name = types.StringPointerValue(new_notebook.Name)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
