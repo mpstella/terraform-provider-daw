@@ -33,8 +33,8 @@ jobs:
         GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw main.go
 
 
-    - name: Upload binaries
-      uses: actions/upload-artifact@v3
+    - name: Upload binaries as artifacts
+      uses: actions/upload-artifact@v4
       with:
         name: terraform-provider-daw-${{ matrix.goos }}-${{ matrix.goarch }}
         path: build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw*        
@@ -45,12 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download binaries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: binaries
+          name: build
           path: ./bin
 
       - name: Create GitHub Release
