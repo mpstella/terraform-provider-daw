@@ -50,7 +50,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: build
+          name: build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw*
           path: ./bin
 
       - name: Create GitHub Release
