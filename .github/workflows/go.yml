@@ -38,3 +38,24 @@ jobs:
       with:
         name: terraform-provider-daw-${{ matrix.goos }}-${{ matrix.goarch }}
         path: build/${{ matrix.goos }}-${{ matrix.goarch }}/terraform-provider-daw*        
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries
+          path: ./bin
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./bin/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
