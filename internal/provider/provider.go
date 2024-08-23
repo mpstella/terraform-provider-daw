@@ -6,7 +6,8 @@ package provider
 import (
 	"context"
 	"os"
-	"terraform-provider-daw/internal/gcp"
+
+	"github.com/mpstella/terraform-provider-daw/internal/gcp"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"terraform-provider-daw/internal/gcp"
+
+	"github.com/mpstella/terraform-provider-daw/internal/gcp"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
