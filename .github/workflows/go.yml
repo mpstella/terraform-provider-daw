@@ -50,12 +50,12 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
-          name: build
-          path: ./build
+          # name: build
+          path: ./bin
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./build/**
+          files: ./bin/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
