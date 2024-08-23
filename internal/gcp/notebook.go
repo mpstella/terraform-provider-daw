@@ -97,7 +97,7 @@ func (n *NotebookClient) CreateNotebook(template *NotebookRuntimeTemplate) (*Not
 
 	var respJSON map[string]interface{}
 
-	json.Unmarshal(body, &respJSON)
+	err = json.Unmarshal(body, &respJSON)
 
 	if err != nil {
 		return nil, err

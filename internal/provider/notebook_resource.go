@@ -7,16 +7,19 @@ import (
 	"strings"
 	"terraform-provider-daw/internal/gcp"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -186,6 +189,20 @@ func (n *notebookResource) Create(ctx context.Context, req resource.CreateReques
 		}
 	}
 
+	if !plan.Labels.IsNull() {
+
+		tflog.Debug(ctx, "********* In Create(plan.Labels IsNotNull()) *********")
+
+		labels := make(map[string]string)
+		plan.Labels.ElementsAs(ctx, &labels, false)
+		notebook.Labels = &labels
+	} else {
+		tflog.Debug(ctx, "********* In Create(plan.Labels IsNull()) *********")
+	}
+
+	nas, _ := notebook.AsString()
+	tflog.Debug(ctx, nas)
+
 	new_notebook, err := n.client.CreateNotebook(&notebook)
 
 	if err != nil {
@@ -285,10 +302,18 @@ func (n *notebookResource) Read(ctx context.Context, req resource.ReadRequest, r
 		state.EnableSecureBoot = types.BoolValue(false)
 	}
 
-	if notebook.EncryptionSpec != nil {
-		state.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
-	} else {
+	if notebook.EncryptionSpec == nil {
 		state.KmsKeyName = types.StringNull()
+	} else {
+		state.KmsKeyName = types.StringPointerValue(notebook.EncryptionSpec.KmsKeyName)
+	}
+
+	if notebook.Labels == nil {
+		state.Labels = types.MapNull(types.StringType)
+	} else {
+		var diags diag.Diagnostics
+		state.Labels, diags = basetypes.NewMapValueFrom(ctx, types.StringType, *notebook.Labels)
+		resp.Diagnostics.Append(diags...)
 	}
 
 	// Set refreshed state
@@ -442,6 +467,15 @@ func (n *notebookResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 						},
 						Default: booldefault.StaticBool(false),
 					},
+				},
+			},
+			"labels": schema.MapAttribute{
+				Description: "A set of key/value label pairs to assign to the resource.",
+				Optional:    true,
+				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+					mapplanmodifier.RequiresReplaceIfConfigured(),
 				},
 			},
 		},

@@ -7,7 +7,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -123,6 +125,14 @@ func (n *notebookDataSource) Read(ctx context.Context, req datasource.ReadReques
 			notebookState.IdleShutdownConfig.IdleShutdownDisabled = types.BoolValue(false)
 		}
 
+		if notebook.Labels == nil {
+			notebookState.Labels = types.MapNull(types.StringType)
+		} else {
+			var diags diag.Diagnostics
+			notebookState.Labels, diags = basetypes.NewMapValueFrom(ctx, types.StringType, *notebook.Labels)
+			resp.Diagnostics.Append(diags...)
+		}
+
 		state.Notebooks = append(state.Notebooks, notebookState)
 	}
 
@@ -217,6 +227,11 @@ func (n *notebookDataSource) Schema(ctx context.Context, _ datasource.SchemaRequ
 									Optional: true,
 								},
 							},
+						},
+						"labels": schema.MapAttribute{
+							Description: "A set of key/value label pairs to assign to the resource.",
+							Optional:    true,
+							ElementType: types.StringType,
 						},
 					},
 				},

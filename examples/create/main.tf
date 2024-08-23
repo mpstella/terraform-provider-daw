@@ -33,6 +33,12 @@ resource "daw_notebook" "basic_template" {
   idle_shutdown_config = {
     idle_timeout = "86400s"
   }
+
+  labels = {
+    "deployed": "deployed-by-daw"
+    "environment" : "dev"
+    "type": "basic"
+  }
 }
 
 resource "daw_notebook" "accelerated_template" {

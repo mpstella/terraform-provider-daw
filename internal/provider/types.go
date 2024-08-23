@@ -21,6 +21,7 @@ type notebookModel struct {
 	DataPersistentDiskSpec notebookDataPersistentDiskSpecModel `tfsdk:"data_persistent_disk_spec"`
 	NetworkSpec            notebookNetworkSpecModel            `tfsdk:"network_spec"`
 	IdleShutdownConfig     notebookIdleShutdownConfigModel     `tfsdk:"idle_shutdown_config"`
+	Labels                 types.Map                           `tfsdk:"labels"`
 }
 
 type notebookMachineSpecModel struct {
