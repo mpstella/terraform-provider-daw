@@ -28,6 +28,14 @@ Ensure you can login to GCP (easiest it to us adc)
 $> gcloud auth application-default login
 ```
 
+##### Create new release
+```
+$> git tag -a v?.?.? -m "Release version v?.?.?"
+$> git push origin v?.?.?
+ 
+```
+
+
 ---
 
 ### Some concepts
